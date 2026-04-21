@@ -1,16 +1,16 @@
-# OAuth Api Connector
+# OAuth API Connector
 
-Backend **FastAPI** listo para integrar **OAuth 2.0** (flujo *authorization code*) y consumir APIs externas. Actualmente soporta **Spotify** y **GitHub**: autorización, intercambio de `code` por tokens y lectura de perfil del usuario.
+**FastAPI** backend for **OAuth 2.0** integration (authorization code flow) and external API connections. It currently supports **Spotify** and **GitHub**: user authorization, `code` exchange for tokens, and profile data retrieval.
 
-## Requisitos
+## Requirements
 
-- Python **3.11+** (recomendado 3.12)
-- App OAuth registrada en [Spotify Dashboard](https://developer.spotify.com/dashboard)
-- App OAuth registrada en [GitHub Developers](https://github.com/settings/developers)
+- Python **3.11+** (3.12 recommended)
+- OAuth app registered in [Spotify Dashboard](https://developer.spotify.com/dashboard)
+- OAuth app registered in [GitHub Developers](https://github.com/settings/developers)
 
-## Entorno virtual (.venv)
+## Virtual Environment (.venv)
 
-Desde la raíz del repositorio:
+From the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -19,35 +19,35 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Copia las variables de entorno y edítalas:
+Copy and edit the environment variables:
 
 ```bash
 cp .env.example .env
 ```
 
-Variables obligatorias para Spotify:
+Required variables for Spotify:
 
-| Variable | Descripción |
+| Variable | Description |
 |----------|-------------|
-| `SPOTIFY_CLIENT_ID` | Client ID de la app Spotify |
+| `SPOTIFY_CLIENT_ID` | Spotify app Client ID |
 | `SPOTIFY_CLIENT_SECRET` | Client Secret |
-| `REDIRECT_URI` | URL de callback (ej. `http://127.0.0.1:8000/callback/spotify`) |
+| `REDIRECT_URI` | Callback URL (e.g. `http://127.0.0.1:8000/callback/spotify`) |
 
-Variables obligatorias para GitHub:
+Required variables for GitHub:
 
-| Variable | Descripción |
+| Variable | Description |
 |----------|-------------|
-| `GITHUB_CLIENT_ID` | Client ID de la app OAuth de GitHub |
+| `GITHUB_CLIENT_ID` | GitHub OAuth app Client ID |
 | `GITHUB_CLIENT_SECRET` | Client Secret |
-| `GITHUB_REDIRECT_URI` | URL de callback (ej. `http://127.0.0.1:8000/callback/github`) |
+| `GITHUB_REDIRECT_URI` | Callback URL (e.g. `http://127.0.0.1:8000/callback/github`) |
 
-Opcional:
+Optional:
 
-| Variable | Descripción |
+| Variable | Description |
 |----------|-------------|
-| `FRONTEND_SUCCESS_URL` | Tras OAuth, redirección HTTP 302 a esta URL con `?session_id=...` |
+| `FRONTEND_SUCCESS_URL` | After OAuth, send HTTP 302 redirect to this URL with `?session_id=...` |
 
-## Ejecutar el servidor
+## Run the Server
 
 ```bash
 source .venv/bin/activate
@@ -57,48 +57,48 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - API: `http://127.0.0.1:8000`
 - OpenAPI (Swagger): `http://127.0.0.1:8000/docs`
 
-## Flujo OAuth (multi-provider)
+## OAuth Flow (Multi-Provider)
 
-1. `GET /auth/{provider}` → JSON con `authorization_url` y `state`.
-   - Providers soportados: `spotify`, `github`.
-2. Abre `authorization_url` en el navegador.
-3. El proveedor redirige a `GET /callback/{provider}?code=...&state=...` (la URI debe coincidir exactamente con tu `.env`).
-   - Spotify usa `REDIRECT_URI`.
-   - GitHub usa `GITHUB_REDIRECT_URI`.
-3. Si `FRONTEND_SUCCESS_URL` no está definido, la respuesta es JSON con `session_id`. Si está definido, recibes un **302** al front con `session_id` en query.
-4. `GET /data/{provider}?session_id=...` → perfil del usuario.
+1. `GET /auth/{provider}` -> JSON with `authorization_url` and `state`.
+   - Supported providers: `spotify`, `github`.
+2. Open `authorization_url` in the browser.
+3. The provider redirects to `GET /callback/{provider}?code=...&state=...` (the URI must exactly match your `.env` value).
+   - Spotify uses `REDIRECT_URI`.
+   - GitHub uses `GITHUB_REDIRECT_URI`.
+4. If `FRONTEND_SUCCESS_URL` is not set, the callback returns JSON with `session_id`. If it is set, the API responds with **302** to the frontend and appends `session_id` in query params.
+5. `GET /data/{provider}?session_id=...` -> user profile data.
    - Spotify: `GET /data/spotify?session_id=...`
    - GitHub: `GET /data/github?session_id=...`
 
-**Nota:** el almacenamiento de tokens es **en memoria** en esta versión (adecuado para desarrollo). En producción con varias réplicas o reinicios, sustituye `TokenStore` por Redis o base de datos.
+**Note:** token/session storage is currently **in-memory** (good for development). In production with multiple replicas or restarts, replace `TokenStore` with Redis or a database.
 
-## Tech stack
+## Tech Stack
 
-| Componente | Uso |
+| Component | Usage |
 |------------|-----|
-| [FastAPI](https://fastapi.tiangolo.com/) | Framework web async, validación y OpenAPI |
-| [Uvicorn](https://www.uvicorn.org/) | Servidor ASGI |
-| [HTTPX](https://www.python-httpx.org/) | Cliente HTTP **async** hacia Spotify/GitHub (token + API) |
-| [python-dotenv](https://github.com/theskumar/python-dotenv) | Carga de `.env` en desarrollo |
-| [Pydantic](https://docs.pydantic.dev/) | Incluido con FastAPI para modelos de configuración |
+| [FastAPI](https://fastapi.tiangolo.com/) | Async web framework, validation, and OpenAPI |
+| [Uvicorn](https://www.uvicorn.org/) | ASGI server |
+| [HTTPX](https://www.python-httpx.org/) | **Async** HTTP client for Spotify/GitHub (token + API calls) |
+| [python-dotenv](https://github.com/theskumar/python-dotenv) | Load `.env` in development |
+| [Pydantic](https://docs.pydantic.dev/) | Used by FastAPI for settings models |
 
-## Arquitectura
+## Architecture
 
 ```
 app/
-  main.py           # App FastAPI, lifespan (cliente httpx), exception handlers
-  core/             # Configuración y variables de entorno
-  routers/          # Solo HTTP: rutas, Depends, respuestas
-  services/         # OAuth, llamadas a APIs externas, almacenamiento de tokens
+  main.py           # FastAPI app, lifespan (shared httpx client), exception handlers
+  core/             # Configuration and environment variables
+  routers/          # HTTP layer only: routes, Depends, responses
+  services/         # OAuth logic, external API calls, token storage
 ```
 
-- **routers**: reciben peticiones, inyectan dependencias y delegan en **services**.
-- **services**: reglas de negocio por proveedor (construcción de URL de autorización, intercambio de código, llamadas API de perfil, validación de `state`, sesiones).
-- **core**: lectura centralizada de configuración (`get_settings()`).
+- **routers**: receive requests, inject dependencies, and delegate to **services**.
+- **services**: provider-specific business logic (authorization URL, code exchange, profile API calls, `state` validation, sessions).
+- **core**: centralized configuration loading (`get_settings()`).
 
-Errores de dominio (`OAuthConnectorError` y subclases) se convierten en JSON uniforme `{ "error", "message" }` con el código HTTP adecuado (401 token/sesión, 400 flujo OAuth, 502 errores de red o respuesta del proveedor, etc.).
+Domain errors (`OAuthConnectorError` and subclasses) are mapped to a consistent JSON format `{ "error", "message" }` with appropriate HTTP status codes (401 token/session, 400 OAuth flow, 502 provider/network failures, etc.).
 
-## Estructura del repositorio
+## Repository Structure
 
 ```
 oauth-api-connector/
@@ -122,6 +122,6 @@ oauth-api-connector/
 └── README.md
 ```
 
-## Licencia
+## License
 
-Ver el archivo `LICENSE` del repositorio.
+See the `LICENSE` file in this repository.
