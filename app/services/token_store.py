@@ -11,6 +11,7 @@ from typing import Optional
 
 @dataclass
 class StoredTokens:
+    provider: str
     access_token: str
     refresh_token: Optional[str]
     expires_at: Optional[datetime]

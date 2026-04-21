@@ -23,7 +23,7 @@ def _require_spotify_config(settings: Settings) -> None:
         raise ConfigurationError(
             "Faltan SPOTIFY_CLIENT_ID o SPOTIFY_CLIENT_SECRET en el entorno."
         )
-    if not settings.redirect_uri:
+    if not settings.spotify_redirect_uri:
         raise ConfigurationError("Falta REDIRECT_URI en el entorno.")
 
 
@@ -33,7 +33,7 @@ def build_authorization_url(settings: Settings, state: str) -> str:
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
-        "redirect_uri": settings.redirect_uri,
+        "redirect_uri": settings.spotify_redirect_uri,
         "scope": " ".join(DEFAULT_SCOPES),
         "state": state,
         "show_dialog": "false",
@@ -63,7 +63,7 @@ async def exchange_code_for_tokens(
     body = {
         "grant_type": "authorization_code",
         "code": code,
-        "redirect_uri": settings.redirect_uri,
+        "redirect_uri": settings.spotify_redirect_uri,
     }
     try:
         response = await client.post(

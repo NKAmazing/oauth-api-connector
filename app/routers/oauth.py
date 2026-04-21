@@ -3,7 +3,7 @@
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.core.config import Settings, get_settings
@@ -21,21 +21,35 @@ async def get_http_client(request: Request) -> httpx.AsyncClient:
     return request.app.state.http_client
 
 
-@router.get("/auth/{provider}", summary="Iniciar OAuth (URL de autorización)")
+@router.get(
+    "/auth/{provider}",
+    summary="Iniciar OAuth (URL de autorización)",
+    description=(
+        "Genera la URL de autorización OAuth para el proveedor indicado. "
+        "Providers soportados: `spotify`, `github`."
+    ),
+)
 async def auth_start(
-    provider: str,
+    provider: str = Path(..., description="Proveedor OAuth (`spotify` o `github`)."),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     return await create_authorization_request(settings, provider)
 
 
-@router.get("/callback/{provider}", summary="Callback OAuth (code → token)")
+@router.get(
+    "/callback/{provider}",
+    summary="Callback OAuth (code → token)",
+    description=(
+        "Endpoint de redirección del proveedor OAuth. Recibe `code` y `state`, "
+        "canjea el token y devuelve `session_id`."
+    ),
+)
 async def auth_callback(
-    provider: str,
     request: Request,
-    code: Optional[str] = Query(None),
-    state: Optional[str] = Query(None),
-    error: Optional[str] = Query(None),
+    provider: str = Path(..., description="Proveedor OAuth (`spotify` o `github`)."),
+    code: Optional[str] = Query(None, description="Authorization code devuelto por el proveedor."),
+    state: Optional[str] = Query(None, description="State OAuth para validación anti-CSRF."),
+    error: Optional[str] = Query(None, description="Error OAuth devuelto por el proveedor."),
     settings: Settings = Depends(get_settings),
     client: httpx.AsyncClient = Depends(get_http_client),
 ):
@@ -56,10 +70,17 @@ async def auth_callback(
     )
 
 
-@router.get("/data/{provider}", summary="Datos del usuario (API del proveedor)")
+@router.get(
+    "/data/{provider}",
+    summary="Datos del usuario (API del proveedor)",
+    description=(
+        "Obtiene datos del usuario autenticado usando el `session_id` "
+        "emitido por `/callback/{provider}`."
+    ),
+)
 async def user_data(
-    provider: str,
-    session_id: str = Query(..., description="session_id devuelto por /callback"),
+    provider: str = Path(..., description="Proveedor OAuth (`spotify` o `github`)."),
+    session_id: str = Query(..., description="session_id devuelto por `/callback/{provider}`."),
     client: httpx.AsyncClient = Depends(get_http_client),
 ) -> dict:
     return await get_provider_user_data(provider, session_id, client=client)

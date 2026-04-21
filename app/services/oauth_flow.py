@@ -12,25 +12,38 @@ from app.services.exceptions import (
     OAuthFlowError,
     UnsupportedProviderError,
 )
+from app.services.github_api import fetch_current_user_profile as fetch_github_profile
+from app.services.github_oauth import (
+    build_authorization_url as build_github_authorization_url,
+)
+from app.services.github_oauth import exchange_code_for_tokens as github_exchange_code
 from app.services.spotify_api import fetch_current_user_profile
 from app.services.spotify_oauth import build_authorization_url, exchange_code_for_tokens
 from app.services.token_store import StoredTokens, expires_at_from_ttl, token_store
 
-SUPPORTED_PROVIDERS = frozenset({"spotify"})
+SUPPORTED_PROVIDERS = frozenset({"spotify", "github"})
+
+
+def normalize_provider(provider: str) -> str:
+    return provider.strip().lower()
 
 
 def ensure_provider(provider: str) -> None:
+    provider = normalize_provider(provider)
     if provider not in SUPPORTED_PROVIDERS:
         raise UnsupportedProviderError(provider)
 
 
 async def create_authorization_request(settings: Settings, provider: str) -> dict[str, str]:
     """Paso 1: URL de autorización + state persistido (anti-CSRF)."""
+    provider = normalize_provider(provider)
     ensure_provider(provider)
     state = token_store.new_state()
     await token_store.register_pending_state(state)
     if provider == "spotify":
         url = build_authorization_url(settings, state)
+    elif provider == "github":
+        url = build_github_authorization_url(settings, state)
     else:
         raise UnsupportedProviderError(provider)
     return {"authorization_url": url, "state": state}
@@ -46,9 +59,10 @@ async def complete_authorization(
     client: httpx.AsyncClient,
 ) -> str:
     """Paso 2: valida state, intercambia code y devuelve session_id."""
+    provider = normalize_provider(provider)
     ensure_provider(provider)
     if error:
-        raise OAuthFlowError(f"Spotify devolvió error OAuth: {error}")
+        raise OAuthFlowError(f"El proveedor devolvió error OAuth: {error}")
     if not code or not state:
         raise OAuthFlowError("Faltan parámetros code o state en el callback.")
     if not await token_store.consume_state(state):
@@ -56,12 +70,15 @@ async def complete_authorization(
 
     if provider == "spotify":
         raw = await exchange_code_for_tokens(settings, code, client=client)
+    elif provider == "github":
+        raw = await github_exchange_code(settings, code, state, client=client)
     else:
         raise UnsupportedProviderError(provider)
 
     expires_in = raw.get("expires_in")
     expires_at = expires_at_from_ttl(int(expires_in)) if expires_in is not None else None
     tokens = StoredTokens(
+        provider=provider,
         access_token=raw["access_token"],
         refresh_token=raw.get("refresh_token"),
         expires_at=expires_at,
@@ -79,10 +96,15 @@ async def get_provider_user_data(
     client: httpx.AsyncClient,
 ) -> dict[str, Any]:
     """Paso 3: datos del usuario usando el token almacenado."""
+    provider = normalize_provider(provider)
     ensure_provider(provider)
     tokens = await token_store.get_session(session_id)
     if tokens is None:
         raise InvalidSessionError()
+    if tokens.provider != provider:
+        raise InvalidSessionError()
     if provider == "spotify":
         return await fetch_current_user_profile(tokens, client=client)
+    if provider == "github":
+        return await fetch_github_profile(tokens, client=client)
     raise UnsupportedProviderError(provider)
